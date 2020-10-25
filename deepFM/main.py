@@ -61,6 +61,7 @@ def main():
     model_deepfm(feature_index_value)
 
     print('save model...')
+    # inputs=tf.concat([data_index, data_value], axis=-1)后的格式，可以进行tf serving进行部署
     model_deepfm.save('./output/deepfm/', save_format='tf')
 
     print('load model and predict...')
