@@ -55,19 +55,19 @@ def get_feature_index_value(data, index_dict, ctg_cols, num_cols):
             data_index.loc[:, col] = index_dict[col]
             # data_value[col] = data_value[col]
 
-    # 训练的train data & train label, 并统一数据格式，不然tf.math.multiply会报错
-    index = tf.cast(data_index[cols].values, tf.float32)
-    value = tf.cast(data_value[cols].values, tf.float32)
-    index_value = tf.concat([index, value], axis=-1)
-    return index_value
+    index = data_index[cols].values
+    value = data_value[cols].values
+
+    return index, value
 
 # label = tf.constant([[0], [1], [1], [0]])
 # idx = tf.constant([[1], [2], [3], [4]])
 # value = tf.constant([[4], [5], [6], [7]])
 # 把数据分为batch
-def get_batch_dataset(idx_value, label, batch_size=64):
+def get_batch_dataset(idx, value, label, batch_size=64):
     '''
-    :param idx_value: array 从get_feature_index_value得到的tf.concat([data_index, data_value], axis=-1)
+    :param idx: array 从get_feature_index_value得到的data_index
+    :param value: array 从get_feature_index_value得到的data_value
     :param label: array 样本标签
     :param batch_size: int
     :return: Dataset object
@@ -79,7 +79,7 @@ def get_batch_dataset(idx_value, label, batch_size=64):
 
     # batch_dataset = tf.data.Dataset.zip((label, idx, value))
     # batch_dataset = batch_dataset.shuffle(buffer_size=batch_size)
-    batch_dataset = tf.data.Dataset.from_tensor_slices((label, idx_value))
+    batch_dataset = tf.data.Dataset.from_tensor_slices((label, idx, value))
     batch_dataset = batch_dataset.batch(batch_size)
     # batch_dataset = batch_dataset.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
     return batch_dataset
@@ -91,9 +91,9 @@ def cross_entropy_loss(y_true, y_pred):
     return tf.reduce_mean(tf.losses.binary_crossentropy(y_true, y_pred))
 
 @tf.function
-def train_one_step(model, optimizer, idx_value, label):
+def train_one_step(model, optimizer, idx, value, label):
     with tf.GradientTape() as tape:
-        output = model(inputs=idx_value)
+        output = model(inputs=[idx, value])
         loss = cross_entropy_loss(y_true=label, y_pred=output)
 
     grads = tape.gradient(loss, model.trainable_variables)
@@ -103,20 +103,20 @@ def train_one_step(model, optimizer, idx_value, label):
 
 # 训练一个epoch
 def train_one_epoch(model, train_batch_dataset, optimizer, epoch, batch_size, train_item_count):
-    for batch_idx, (label, idx_value) in enumerate(train_batch_dataset):
+    for batch_idx, (label, idx, value) in enumerate(train_batch_dataset):
         if len(label) == 0:
             break
 
-        loss = train_one_step(model, optimizer, idx_value, label)
+        loss = train_one_step(model, optimizer, idx, value, label)
 
         # 每训练100个batch, print一次信息
         if batch_idx % 100 == 0:
             print('Train Epoch: {} [{} / {} ({:.2f}%)]\tLoss:{:.6f}'.format(
-                epoch, batch_idx * len(idx_value), train_item_count,
+                epoch, batch_idx * len(idx), train_item_count,
                 100. * batch_idx / math.ceil(int(train_item_count / batch_size)), loss.numpy()))
 
         batch_idx_i = batch_idx
-        batch_size = len(idx_value)
+        batch_size = len(idx)
     # 当样本不能被batch_size整除时，每一轮epoch结束print一次信息
     if (batch_idx_i * batch_size) != train_item_count:
         print('Train Epoch: {} [{} / {} ({:.2f}%)]\tLoss:{:.6f}'.format(
@@ -125,12 +125,14 @@ def train_one_epoch(model, train_batch_dataset, optimizer, epoch, batch_size, tr
 
 # train model
 def train_model(model,
-                idx_value,
+                idx,
+                value,
                 label,
                 batch_size=64,
                 epochs=5):
 
-    train_batch_dataset = get_batch_dataset(idx_value,
+    train_batch_dataset = get_batch_dataset(idx,
+                                            value,
                                             label,
                                             batch_size=batch_size)
 

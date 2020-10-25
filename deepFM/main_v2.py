@@ -1,5 +1,5 @@
-from util.utils import get_index_dict, get_feature_index_value, train_model
-from model.deepFM import DeepFM
+from util.v2.utils import get_index_dict, get_feature_index_value, train_model
+from model.v2.deepFM import DeepFM
 import tensorflow as tf
 import pandas as pd
 
@@ -28,13 +28,15 @@ def main():
                                              num_cols=num_cols)
 
     # 获取feature_index, feature_value
-    feature_index_value = get_feature_index_value(data=dfTrain,
-                                                  index_dict=index_dict,
-                                                  ctg_cols=ctg_cols,
-                                                  num_cols=num_cols)
+    feature_index, feature_value = get_feature_index_value(data=dfTrain,
+                                                           index_dict=index_dict,
+                                                           ctg_cols=ctg_cols,
+                                                           num_cols=num_cols)
 
     # 训练的train data & train label, 并统一数据格式，不然tf.math.multiply会报错
     # TypeError: Input 'y' of 'Mul' Op has type float64 that does not match type float32 of argument 'x'.
+    feature_index = tf.cast(feature_index, tf.float32)
+    feature_value = tf.cast(feature_value, tf.float32)
     y_label = tf.cast(dfTrain['target'].values, tf.float32)
 
     print('train model...')
@@ -47,7 +49,8 @@ def main():
                           dropout_deep=0)
 
     train_model(model_deepfm,
-                idx_value=feature_index_value,
+                idx=feature_index,
+                value=feature_value,
                 label=y_label,
                 batch_size=64,
                 epochs=5)
@@ -56,9 +59,12 @@ def main():
 
     print('predict...')
     # model_deepfm.predict报错，待研究。ValueError: Unknown graph. Aborting.
+    # model_deepfm.predict([feature_index, feature_value])
     # 自定义模型，直接调用model(x)或者model.call(x)进行预测，而不是model.predict(x)
-    # model_deepfm.call(feature_index_value)
-    model_deepfm(feature_index_value)
+
+    # 改成model([x1, x2])格式的输入，模型可以进行save，但是用tf serving部署不成功
+    model_deepfm([feature_index, feature_value])
+    model_deepfm.call([feature_index, feature_value])
 
     print('save model...')
     model_deepfm.save('./output/deepfm/', save_format='tf')
@@ -66,8 +72,9 @@ def main():
     print('load model and predict...')
     model_load = tf.saved_model.load('./output/deepfm/')
     # <简明的tf2> p81 提到 saved_model后的模型没法用model(x) 进行预测，要用model.call(x)进行预测，但这里直接预测
-    model_load(feature_index_value)
-    # model_load.call(feature_index_value)
+    # print(model_load.call([feature_index, feature_value]))
+    print(model_load([feature_index, feature_value]))
+
     print('end!')
 
 if __name__ == '__main__':

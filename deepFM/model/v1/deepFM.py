@@ -49,9 +49,7 @@ class DeepFM(tf.keras.Model):
 
     # 前向传播
     @tf.function
-    def call(self, inputs):
-        feature_index = inputs[:, :self.num_field]
-        feature_value = inputs[:, self.num_field:]
+    def call(self, feature_index, feature_value):
         # 为了矩阵运算，需要对feature_value进行从内升维，从none * f 到 none * f * 1
         # 之所以是f不是one-hot后的n,是因为这里进行了压缩，离散的值都是1，主要是通过feature_index索引决定的
         feature_value = tf.expand_dims(feature_value, axis=-1)
